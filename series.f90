@@ -28,9 +28,8 @@ module series
 
     type Sum
         type(Number) :: lowerBound
-        type(Number) :: upperBound
         type(Number) :: Expr
-        type(Number) :: errBound
+        type(Number) :: NecessaryN !error bound rearranged so that the error bound is inserted and n is produced
     end type
 
     type Div
@@ -86,9 +85,9 @@ module series
         module procedure intval
     end interface
 contains
-    pure elemental type(number) function numVar(arg)
-        integer, intent(in) :: arg
-        numVar%subnode = Var(arg)
+    pure elemental type(number) function arg(argNumb)
+        integer, intent(in) :: argNumb
+        arg%subnode = Var(argNumb)
     end function 
 
     pure elemental type(number) function intval(input)
@@ -174,6 +173,28 @@ contains
         multiply_int_numb%subnode = Mult(intval(a),b)
     end function
 
+    recursive type(number) function populate(input,args) result(result)
+        type(number), intent(in) :: input
+        type(number), intent(in) :: args(0:)
+
+        select type (val=>input%subnode)
+        type is (Var)
+            if (val%argNumb<=size(args)) then
+                result = args(val%argNumb)
+            end if
+        type is (Ratio)
+            result%subnode = val
+        type is (Add)
+            result%subnode = Add(populate(val%a,args),populate(val%b,args))
+        type is (Pow)
+            result%subnode = Pow(populate(val%a,args),val%b)
+        type is (Mult)
+            result%subnode = Mult(populate(val%a,args),populate(val%b,args))
+        type is (Div)
+            result%subnode = Div(populate(val%a,args),populate(val%b,args))
+        end select
+    end function 
+
     recursive type(Ball) pure elemental function eval(input,mineps) result(result)
         type(number), intent(in) :: input
         real(real128), value :: mineps
@@ -181,9 +202,12 @@ contains
         real(real128) :: xmax, xmin, ymax, ymin, zmax, zmin, znom, ULP
         integer :: i
         select type (val=>input%subnode)
+        type is (Var)
+            error stop "variables cannot be within any evaluated numbers"
         type is (Ratio)
             result%val = val%value
-            result%epsilon = 2**real(exponent(result%val)-112,real128)/2
+            !result%epsilon = 2**real(exponent(result%val)-112,real128)/2
+            result%epsilon = 0
         type is (Add)
             result%epsilon = 100000000
             mineps = mineps * 2
@@ -204,7 +228,6 @@ contains
             end do
         type is (Pow)
             result%epsilon = 100000000
-            mineps = mineps * 2
             i = 0
             do while (result%epsilon>mineps)
                 if (i/=0) then
