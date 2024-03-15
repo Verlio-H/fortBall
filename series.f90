@@ -273,7 +273,7 @@ contains
         case (TYPE_ADD)
             result = diff(input%a,argument)+diff(input%b,argument)
         case (TYPE_POW)
-            result = intval(input%numb1%val)*input%a**(input%numb1%val-1)*diff(input%a,argument)
+            result = numb(input%numb1)*input%a**input%numb1/input%a*diff(input%a,argument)
         case (TYPE_MLT)
             result = diff(input%a,argument)*input%b+input%a*diff(input%b,argument)
         case (TYPE_DIV)
