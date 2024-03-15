@@ -2,54 +2,37 @@ module series
     use iso_fortran_env
     implicit none
 
+
+    integer, parameter :: TYPE_INT = 0
+    integer, parameter :: TYPE_ADD = 1
+    integer, parameter :: TYPE_MLT = 2
+    integer, parameter :: TYPE_DIV = 3
+    integer, parameter :: TYPE_POW = 4
+    integer, parameter :: TYPE_FACT = 5
+    integer, parameter :: TYPE_SUM = 6
+    integer, parameter :: TYPE_VAR = 7
+
+    integer, parameter :: INT_VAL = 0
+    integer, parameter :: INT_SUMBOUND = 1
+    integer, parameter :: INT_INF = 2
+
+    integer, parameter :: MAX_SUM_DEPTH = 1024
+    integer :: sumstack(MAX_SUM_DEPTH)
+    integer :: sumptr = 0
+
+    type expandedint
+        integer :: type
+        integer :: val
+    end type
+
+    type(expandedint), parameter :: infinity = expandedint(INT_INF,0)
+
     type Number
-        class(*), allocatable :: subnode
-    end type
-
-    type Ratio
-        real(real128) :: value
-    end type
-
-    type Inf
-        logical :: sign
-    end type 
-
-    type Var
-        integer :: argNumb
-    end type
-
-    type SeriesVarN
-        integer :: depth
-    end type
-
-    type SeriesVarMaxN
-        integer :: depth
-    end type
-
-    type Sum
-        type(Number) :: lowerBound
-        type(Number) :: Expr
-        type(Number) :: NecessaryN !error bound rearranged so that the error bound is inserted and n is produced
-    end type
-
-    type Div
-        type(Number) :: a
-        type(Number) :: b
-    end type 
-
-    type Mult
-        type(Number) :: a
-        type(Number) :: b
-    end type
-
-    type Add
-        type(Number) :: a
-        type(Number) :: b
-    end type
-
-    type Pow
-        type(Number) :: a
-        integer :: b
+        integer :: type
+        type(Number), allocatable :: a
+        type(Number), allocatable :: b
+        type(expandedint) :: numb1 = expandedint(INT_VAL,0)
+        type(expandedint) :: numb2 = expandedint(INT_VAL,0)
     end type
 
     type Ball
@@ -74,141 +57,256 @@ module series
     end interface
 
     interface operator(**)
-        module procedure exponentiate
+        module procedure exponentiate, expanded_exponentiate
     end interface
 
     interface write(formatted)
-        module procedure write
+        module procedure write, write_number
     end interface
 
-    interface number
-        module procedure intval
+    interface numb
+        module procedure intval, eintval
     end interface
 contains
-    pure elemental type(number) function arg(argNumb)
+    pure elemental type(number) function arg(argNumb,derivative)
         integer, intent(in) :: argNumb
-        arg%subnode = Var(argNumb)
+        integer, intent(in), optional :: derivative
+        arg%type = TYPE_VAR
+        arg%numb1 = expandedint(INT_VAL,argNumb)
+        arg%numb2 = expandedint(INT_VAL,0)
+        if (present(derivative)) arg%numb2 = expandedint(INT_VAL,derivative)
     end function 
+
+    pure elemental integer function collapseInt(input) result(j)
+        type(expandedint), intent(in) :: input
+        select case (input%type)
+        case (INT_VAL)
+            j = input%val
+        case (INT_SUMBOUND)
+            if (input%val>=sumptr) error stop "sum depth not great enough"
+            j = sumstack(sumptr-input%val)
+        case (INT_INF)
+            j = huge(j)
+        end select
+    end function
+
+    pure elemental type(number) function sum(low,high,expr,error)
+        type(expandedint), intent(in) :: low
+        type(expandedint), intent(in) :: high
+        type(number), intent(in) :: expr
+        type(number), intent(in) :: error
+        sum%type = TYPE_SUM
+        sum%numb1 = low
+        sum%numb2 = high
+        sum%a = expr
+        sum%b = error
+    end function
+
+    pure elemental type(expandedint) function eint(input)
+        integer, intent(in) :: input
+        eint = expandedint(INT_VAL,input)
+    end function
+
+    pure elemental type(expandedint) function eintsum(input)
+        integer, intent(in) :: input
+        eintsum = expandedint(INT_SUMBOUND,input)
+    end function
 
     pure elemental type(number) function intval(input)
         integer, intent(in) :: input
-        intval%subnode = Ratio(input)
+        intval%type = TYPE_INT
+        intval%numb1 = expandedint(INT_VAL,input)
+    end function
+
+    pure elemental type(number) function eintval(input)
+        type(expandedint), intent(in) :: input
+        eintval%type = TYPE_INT
+        eintval%numb1 = input
     end function
 
     pure elemental type(number) function exponentiate(a,b)
         type(number), intent(in) :: a
         integer, intent(in) :: b
-        exponentiate%subnode = Pow(a,b)
+        exponentiate = number(TYPE_POW)
+        exponentiate%type = TYPE_POW
+        exponentiate%a = a
+        exponentiate%numb1 = expandedint(INT_VAL,b)
+    end function
+
+    pure elemental type(number) function expanded_exponentiate(a,b)
+        type(number), intent(in) :: a
+        type(expandedint), intent(in) :: b
+        expanded_exponentiate = number(TYPE_POW)
+        expanded_exponentiate%type = TYPE_POW
+        expanded_exponentiate%a = a
+        expanded_exponentiate%numb1 = b
     end function
 
     pure elemental type(number) function addition(a,b)
         type(number), intent(in) :: a
         type(number), intent(in) :: b
-        addition%subnode = Add(a,b)
+        addition%type = TYPE_ADD
+        addition%a = a
+        addition%b = b
     end function
 
     pure elemental type(number) function addition_numb_int(a,b)
         type(number), intent(in) :: a
         integer, intent(in) :: b
-        addition_numb_int%subnode = Add(a,intval(b))
+        addition_numb_int = addition(a,intval(b))
     end function
 
     pure elemental type(number) function addition_int_numb(a,b)
         integer, intent(in) :: a
         type(number), intent(in) :: b
-        addition_int_numb%subnode = Add(intval(a),b)
+        addition_int_numb = addition(intval(a),b)
     end function
 
-    pure elemental type(number) function subtract(a,b)
+    pure type(number) function subtract(a,b)
         type(number), intent(in) :: a
         type(number), intent(in) :: b
-        subtract%subnode = Add(a,b*intval(-1))
+        subtract%type = TYPE_ADD
+        subtract%a = a
+        subtract%b = intval(-1)*b
     end function
 
     pure elemental type(number) function subtract_numb_int(a,b)
         type(number), intent(in) :: a
         integer, intent(in) :: b
-        subtract_numb_int%subnode = Add(a,intval(-b))
+        subtract_numb_int = subtract(a,intval(b))
     end function
 
-    pure elemental type(number) function subtract_int_numb(a,b)
+    type(number) function subtract_int_numb(a,b)
         integer, intent(in) :: a
         type(number), intent(in) :: b
-        subtract_int_numb%subnode = Add(intval(a),b*intval(-1))
+        subtract_int_numb = subtract(intval(a),b)
     end function
 
     pure elemental type(number) function divide(a,b)
         type(number), intent(in) :: a
         type(number), intent(in) :: b
-        divide%subnode = Div(a,b)
+        divide%type = TYPE_DIV
+        divide%a = a
+        divide%b = b
     end function
 
     pure elemental type(number) function divide_numb_int(a,b)
         type(number), intent(in) :: a
         integer, intent(in) :: b
-        divide_numb_int%subnode = Div(a,intval(b))
+        divide_numb_int = a/intval(b)
     end function
 
     pure elemental type(number) function divide_int_numb(a,b)
         integer, intent(in) :: a
         type(number), intent(in) :: b
-        divide_int_numb%subnode = Div(intval(a),b)
+        divide_int_numb = intval(a)/b
     end function
 
     pure elemental type(number) function multiply(a,b)
         type(number), intent(in) :: a
         type(number), intent(in) :: b
-        multiply%subnode = Mult(a,b)
+        multiply%type = TYPE_MLT
+        multiply%a = a
+        multiply%b = b
+        multiply%numb1 = expandedint(INT_VAL,0)
+        multiply%numb2 = expandedint(INT_VAL,0)
     end function
 
     pure elemental type(number) function multiply_numb_int(a,b)
         type(number), intent(in) :: a
         integer, intent(in) :: b
-        multiply_numb_int%subnode = Mult(a,intval(b))
+        multiply_numb_int = multiply(a,intval(b))
     end function
 
     pure elemental type(number) function multiply_int_numb(a,b)
         integer, intent(in) :: a
         type(number), intent(in) :: b
-        multiply_int_numb%subnode = Mult(intval(a),b)
+        multiply_int_numb = multiply(intval(a),b)
     end function
 
-    recursive type(number) function populate(input,args) result(result)
+    pure recursive function populate(input,args) result(result)
         type(number), intent(in) :: input
-        type(number), intent(in) :: args(0:)
-
-        select type (val=>input%subnode)
-        type is (Var)
-            if (val%argNumb<=size(args)) then
-                result = args(val%argNumb)
+        type(number), intent(in) :: args(:)
+        type(number) :: result
+        integer :: i
+        select case (input%type)
+        case (TYPE_VAR)
+            if (input%numb1%val<=size(args)) then
+                result = args(input%numb1%val)
+                do i=1,input%numb2%val
+                    result = diff(result,-1)
+                end do
             end if
-        type is (Ratio)
-            result%subnode = val
-        type is (Add)
-            result%subnode = Add(populate(val%a,args),populate(val%b,args))
-        type is (Pow)
-            result%subnode = Pow(populate(val%a,args),val%b)
-        type is (Mult)
-            result%subnode = Mult(populate(val%a,args),populate(val%b,args))
-        type is (Div)
-            result%subnode = Div(populate(val%a,args),populate(val%b,args))
+        case (TYPE_INT)
+            result = input
+        case (TYPE_ADD)
+            result = populate(input%a,args)+populate(input%b,args)
+        case (TYPE_POW)
+            result = populate(input%a,args)**input%numb1
+        case (TYPE_MLT)
+            result = populate(input%a,args)*populate(input%b,args)
+        case (TYPE_DIV)
+            result = populate(input%a,args)/populate(input%b,args)
+        case (TYPE_SUM)
+            result = sum(input%numb1,input%numb2,populate(input%a,args),populate(input%b,args))
+        case default
+            error stop
         end select
     end function 
 
-    recursive type(Ball) pure elemental function eval(input,mineps) result(result)
+    pure elemental recursive type(number) function diff(input, argument) result(result)
+        type(number), intent(in) :: input
+        integer, intent(in) :: argument
+        select case (input%type)
+        case (TYPE_VAR)
+            if (input%numb1%val==argument) then
+                if (input%numb2%val==0) then
+                    result = intval(1)
+                else
+                    result = intval(0)
+                end if
+            else
+                result = arg(input%numb1%val,input%numb2%val+1)
+            end if
+        case (TYPE_INT)
+            result = intval(0)
+        case (TYPE_ADD)
+            result = diff(input%a,argument)+diff(input%b,argument)
+        case (TYPE_POW)
+            result = intval(input%numb1%val)*input%a**(input%numb1%val-1)*diff(input%a,argument)
+        case (TYPE_MLT)
+            result = diff(input%a,argument)*input%b+input%a*diff(input%b,argument)
+        case (TYPE_DIV)
+            result = (input%b*diff(input%a,argument)-input%a*diff(input%b,argument))/input%b**2
+        case (TYPE_SUM)
+            result = sum(input%numb1,input%numb2,diff(input%a,argument),diff(input%b,argument))
+        case default
+            error stop
+        end select
+    end function
+
+    recursive type(Ball) function eval(input,mineps) result(result)
         type(number), intent(in) :: input
         real(real128), value :: mineps
         type(Ball) :: resultx, resulty
         real(real128) :: xmax, xmin, ymax, ymin, zmax, zmin, znom, ULP
-        integer :: i
-        select type (val=>input%subnode)
-        type is (Var)
-            error stop "variables cannot be within any evaluated numbers"
-        type is (Ratio)
-            result%val = val%value
+        integer :: i, j
+        select case (input%type)
+        case (TYPE_VAR)
+            error stop "Variables cannot be within any evaluated numbers"
+        case (TYPE_INT)
+            select case (input%numb1%type)
+            case (INT_VAL)
+                result%val = input%numb1%val
+            case (INT_SUMBOUND)
+                if (input%numb1%val>=sumptr) error stop "sum depth not great enough"
+                result%val = sumstack(sumptr-input%numb1%val)
+            case (INT_INF)
+                result%val = 1./0. ! generate infinity, really should never be used but is here for completeness sake
+            end select
             !result%epsilon = 2**real(exponent(result%val)-112,real128)/2
             result%epsilon = 0
-        type is (Add)
+        case (TYPE_ADD)
             result%epsilon = 100000000
             mineps = mineps * 2
             i = 0
@@ -217,8 +315,8 @@ contains
                     if (resultx%epsilon>mineps.and.resulty%epsilon>mineps) return
                 end if
                 mineps = mineps*0.5
-                resultx = eval(val%a,mineps/2)
-                resulty = eval(val%b,mineps/2)
+                resultx = eval(input%a,mineps/2)
+                resulty = eval(input%b,mineps/2)
                 result%val = resultx%val+resulty%val
             ! ULP = 2^(exp-(pbits-1))
                 ULP = 2**real(exponent(result%val)-112,real128)
@@ -226,7 +324,7 @@ contains
                 result%epsilon = resultx%epsilon+resulty%epsilon+ULP/2
                 i = i + 1
             end do
-        type is (Pow)
+        case (TYPE_POW)
             result%epsilon = 100000000
             i = 0
             do while (result%epsilon>mineps)
@@ -234,14 +332,16 @@ contains
                     if (resultx%epsilon>mineps) return
                 end if
                 mineps = mineps*0.5
-                resultx = eval(val%a,mineps)
+
+                j = collapseInt(input%numb1)
+                resultx = eval(input%a,mineps)
                 xmin = sign(abs(resultx%val)-resultx%epsilon,resultx%val)
                 xmax = sign(abs(resultx%val)+resultx%epsilon,resultx%val)
 
-                zmax = xmax**val%b
-                zmin = xmin**val%b
+                zmax = xmax**j
+                zmin = xmin**j
 
-                znom = resultx%val**val%b
+                znom = resultx%val**j
 
                 zmax = abs(zmax-znom)
                 zmin = abs(zmin-znom)
@@ -252,7 +352,7 @@ contains
                 result%epsilon = max(zmax,zmin)+ULP/2
                 i = i + 1
             end do
-        type is (Mult)
+        case (TYPE_MLT)
             result%epsilon = 100000000
             mineps = mineps * 2
             i = 0
@@ -261,11 +361,11 @@ contains
                     if (resultx%epsilon>mineps.and.resulty%epsilon>mineps) return
                 end if
                 mineps = mineps*0.5
-                resultx = eval(val%a,mineps)
+                resultx = eval(input%a,mineps)
                 xmin = sign(abs(resultx%val)-resultx%epsilon,resultx%val)
                 xmax = sign(abs(resultx%val)+resultx%epsilon,resultx%val)
 
-                resulty = eval(val%b,mineps)
+                resulty = eval(input%b,mineps)
                 ymin = sign(abs(resulty%val)-resulty%epsilon,resulty%val)
                 ymax = sign(abs(resulty%val)+resulty%epsilon,resulty%val)
             ! zmax = xmax*ymax
@@ -285,7 +385,7 @@ contains
                 result%epsilon = max(zmax,zmin)+ULP/2
                 i = i + 1
             end do
-        type is (Div)
+        case (TYPE_DIV)
             result%epsilon = 100000000
             mineps = mineps * 2
             i = 0
@@ -294,11 +394,11 @@ contains
                     if (resultx%epsilon>mineps.and.resulty%epsilon>mineps) return
                 end if
                 mineps = mineps*0.5
-                resultx = eval(val%a,mineps)
+                resultx = eval(input%a,mineps)
                 xmin = sign(abs(resultx%val)-resultx%epsilon,resultx%val)
                 xmax = sign(abs(resultx%val)+resultx%epsilon,resultx%val)
 
-                resulty = eval(val%b,mineps)
+                resulty = eval(input%b,mineps)
                 ymin = sign(abs(resulty%val)-resulty%epsilon,resulty%val)
                 ymax = sign(abs(resulty%val)+resulty%epsilon,resulty%val)
             ! zmax = xmax/ymin
@@ -318,6 +418,29 @@ contains
                 result%epsilon = max(zmax,zmin)+ULP/2
                 i = i + 1
             end do
+        case (TYPE_SUM)
+            i=collapseInt(input%numb1)
+            j=collapseInt(input%numb2)
+            sumptr = sumptr + 1
+            ! add all 3 error bounds, so perhaps use n/10
+            result%val = 0
+            result%epsilon = 0
+            do
+                sumstack(sumptr) = i
+                resultx = eval(input%a,mineps/10)
+                result%val = result%val+resultx%val
+                result%epsilon = result%epsilon+resultx%epsilon+2**real(exponent(result%val)-112,real128)/2
+
+                resulty = eval(input%b,mineps/10)
+                resulty%val = abs(resulty%val)
+
+                if (resulty%val+resulty%epsilon+result%epsilon<=mineps) exit
+                i = i + 1
+                if (i>j) exit
+            end do
+            result%epsilon=resulty%val+resulty%epsilon+result%epsilon
+        case default
+            error stop
         end select
     end function
 
@@ -333,12 +456,103 @@ contains
         if (size(v_list)/=0) then
             iostat = 1
             iomsg = iotype ! to silence the beast of gfortran
-            iomsg = 'variable list not supported for this io type'
+            iomsg = 'Variable list not supported for this io type'
             return
         end if
         select type (dtv)
         type is (Ball)
-            write(unit,'(ES0.0E0,A,ES0.0E0)') dtv%val,' +- ',dtv%epsilon
+            write(unit,'(ES0.36E0,A,ES0.36E0)') dtv%val,' +- ',dtv%epsilon
+        end select
+    end subroutine
+
+    subroutine write_number(dtv,unit,iotype,v_list,iostat,iomsg)
+        class(number), intent(in) :: dtv
+        integer, intent(in) :: unit
+        character(len=*), intent(in) :: iotype
+        integer, intent(in) :: v_list(:)
+        integer, intent(out) :: iostat
+        character(len=*), intent(inout) :: iomsg
+
+        iostat = 0
+        if (size(v_list)/=0) then
+            iostat = 1
+            iomsg = iotype ! to silence the beast of gfortran
+            iomsg = 'Variable list not supported for this io type'
+            return
+        end if
+        select type (dtv)
+        type is (number)
+            call printNumb(unit, dtv, 0)
+            write(unit,'(A)') 'end'
+        end select
+    end subroutine
+
+    recursive subroutine printNumb(unit,val, indent)
+        integer, intent(in) :: unit
+        type(number), intent(in) :: val
+        integer, intent(in) :: indent
+        select case (val%type)
+        case (TYPE_VAR)
+            write(unit,'(A,I0,A,I0,A)') repeat('  ',indent)//'var:',val%numb1%val,', derivative:',val%numb2%val,achar(10)
+        case (TYPE_INT)
+            select case (val%numb1%type)
+            case (INT_VAL)
+                write(unit,'(A,I0,A)') repeat('  ',indent)//'int:',val%numb1%val,achar(10)
+            case (INT_SUMBOUND)
+                write(unit,'(A,I0,A)') repeat('  ',indent)//'sumbound:',val%numb1%val,achar(10)
+            case (INT_INF)
+                write(unit,'(A)') repeat(' ',indent)//'infinity'//achar(10)
+            end select
+        case (TYPE_ADD)
+            write(unit,'(A)') repeat('  ',indent)//'+:'//achar(10)
+            call printNumb(unit,val%a,indent+1)
+            call printNumb(unit,val%b,indent+1)
+        case (TYPE_POW)
+            write(unit,'(A)') repeat('  ',indent)//'**'
+            select case (val%numb1%type)
+            case (INT_VAL)
+                write(unit,'(A,I0,A)') 'int:',val%numb1%val,achar(10)
+            case (INT_SUMBOUND)
+                write(unit,'(A,I0,A)') 'sumbound:',val%numb1%val,achar(10)
+            case (INT_INF)
+                write(unit,'(A)') 'infinity'//achar(10)
+            end select
+
+            call printNumb(unit,val%a,indent+1)
+        case (TYPE_MLT)
+            write(unit,'(A)') repeat('  ',indent)//'*:'//achar(10)
+            call printNumb(unit,val%a,indent+1)
+            call printNumb(unit,val%b,indent+1)
+        case (TYPE_DIV)
+            write(unit,'(A)') repeat('  ',indent)//'/:'//achar(10)
+            call printNumb(unit,val%a,indent+1)
+            call printNumb(unit,val%b,indent+1)
+        case (TYPE_SUM)
+            write(unit,'(A)') repeat(' ',indent)//'sum:'//achar(10)
+            write(unit,'(A)') repeat(' ',indent+1)//'from:'//achar(10)
+            select case (val%numb1%type)
+            case (INT_VAL)
+                write(unit,'(A,I0,A)') repeat('  ',indent+2)//'int:',val%numb1%val,achar(10)
+            case (INT_SUMBOUND)
+                write(unit,'(A,I0,A)') repeat('  ',indent+2)//'sumbound:',val%numb1%val,achar(10)
+            case (INT_INF)
+                write(unit,'(A)') repeat(' ',indent+2)//'infinity'//achar(10)
+            end select
+            write(unit,'(A)') repeat(' ',indent+1)//'to:'//achar(10)
+            select case (val%numb2%type)
+            case (INT_VAL)
+                write(unit,'(A,I0,A)') repeat('  ',indent+2)//'int:',val%numb2%val,achar(10)
+            case (INT_SUMBOUND)
+                write(unit,'(A,I0,A)') repeat('  ',indent+2)//'sumbound:',val%numb2%val,achar(10)
+            case (INT_INF)
+                write(unit,'(A)') repeat(' ',indent+2)//'infinity'//achar(10)
+            end select
+            write(unit,'(A)') repeat(' ',indent+1)//'expression:'//achar(10)
+            call printNumb(unit,val%a,indent+2)
+            write(unit,'(A)') repeat(' ',indent+1)//'error:'//achar(10)
+            call printNumb(unit,val%b,indent+2)
+        case default
+            write(unit,'(A)') 'unknown type'//achar(10)
         end select
     end subroutine
 end module
