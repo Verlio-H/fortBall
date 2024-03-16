@@ -36,6 +36,7 @@ module series
         type(expandedint) :: numb1 = expandedint(INT_VAL,0)
         type(expandedint) :: numb2 = expandedint(INT_VAL,0)
         integer :: minn = 0
+        integer, allocatable :: diffs(:)
     end type
 
     type Ball
@@ -315,7 +316,7 @@ contains
             if (input%numb1%val<=size(args)) then
                 result = args(input%numb1%val)
                 do i=1,input%numb2%val
-                    result = diff(result,-1)
+                    result = diff(result,input%diffs(i))
                 end do
             end if
         case (TYPE_INT,TYPE_FACT)
@@ -349,7 +350,13 @@ contains
                     result = intval(0)
                 end if
             else
-                result = arg(input%numb1%val,input%numb2%val+1)
+                result = input
+                result%numb2%val = result%numb2%val + 1
+                if (allocated(result%diffs)) then
+                    result%diffs = [result%diffs, argument]
+                else
+                    result%diffs = [argument]
+                end if
             end if
         case (TYPE_INT,TYPE_FACT)
             result = intval(0)
