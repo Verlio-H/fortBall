@@ -369,7 +369,7 @@ contains
         type(number), intent(in) :: input
         real(real128), value :: mineps
         type(Ball) :: resultx, resulty
-        real(real128) :: xmax, xmin, ymax, ymin, zmax, zmin, znom, ULP
+        real(real128) :: xmax, xmin, ymax, ymin, zmax, zmin, znom, ULP, minepstmp
         integer :: i, j, k
         select case (input%type)
         case (TYPE_VAR)
@@ -388,7 +388,7 @@ contains
             result%epsilon = 0
         case (TYPE_ADD)
             result%epsilon = 100000000
-            mineps = mineps * 2
+            minepstmp = mineps * 2
             i = 0
 
             
@@ -396,9 +396,9 @@ contains
                 if (i/=0) then
                     if (resultx%epsilon>mineps.and.resulty%epsilon>mineps) return
                 end if
-                mineps = mineps*0.5
-                resultx = eval(input%a,mineps/2)
-                resulty = eval(input%b,mineps/2)
+                minepstmp = minepstmp*0.5
+                resultx = eval(input%a,minepstmp/2)
+                resulty = eval(input%b,minepstmp/2)
                 result%val = resultx%val+resulty%val
             ! ULP = 2^(exp-(pbits-1))
                 ULP = 2**real(exponent(result%val)-112,real128)
@@ -408,15 +408,16 @@ contains
             end do
         case (TYPE_POW)
             result%epsilon = 100000000
+            minepstmp = mineps * 2
             i = 0
             do while (result%epsilon>mineps)
                 if (i/=0) then
                     if (resultx%epsilon>mineps) return
                 end if
-                mineps = mineps*0.5
+                minepstmp = mineps*0.5
 
                 j = collapseInt(input%numb1)
-                resultx = eval(input%a,mineps)
+                resultx = eval(input%a,minepstmp)
                 xmin = sign(abs(resultx%val)-resultx%epsilon,resultx%val)
                 xmax = sign(abs(resultx%val)+resultx%epsilon,resultx%val)
 
@@ -436,51 +437,45 @@ contains
             end do
         case (TYPE_MLT)
             result%epsilon = 100000000
-            mineps = mineps * 2
+            minepstmp = mineps * 2
             i = 0
             do while (result%epsilon>mineps)
                 if (i/=0) then
-                    if (resultx%epsilon>mineps.and.resulty%epsilon>mineps) return
+                    if (resultx%epsilon>minepstmp.and.resulty%epsilon>minepstmp) return
                 end if
-                mineps = mineps*0.5
-                resultx = eval(input%a,mineps)
-                xmin = sign(abs(resultx%val)-resultx%epsilon,resultx%val)
+                minepstmp = minepstmp*0.5
+                resultx = eval(input%a,minepstmp)
                 xmax = sign(abs(resultx%val)+resultx%epsilon,resultx%val)
 
-                resulty = eval(input%b,mineps)
-                ymin = sign(abs(resulty%val)-resulty%epsilon,resulty%val)
+                resulty = eval(input%b,minepstmp)
                 ymax = sign(abs(resulty%val)+resulty%epsilon,resulty%val)
             ! zmax = xmax*ymax
                 zmax = xmax*ymax
-            ! zmin = xmin*ymin
-                zmin = xmin*ymin
             ! znominal = x*y
                 znom = resultx%val*resulty%val
             ! emax = abs(zmax-znominal)
                 zmax = abs(zmax-znom)
-            ! emin = abs(zmin-znominal)
-                zmin = abs(zmin-znom)
                 result%val = znom
             ! ULP = 2^(exp-(pbits-1))
                 ULP = 2**real(exponent(result%val)-112,real128)
             ! error = max(emax,emin) + 1/2 ULP
-                result%epsilon = max(zmax,zmin)+ULP/2
+                result%epsilon = zmax+ULP/2
                 i = i + 1
             end do
         case (TYPE_DIV)
             result%epsilon = 100000000
-            mineps = mineps * 2
+            minepstmp = mineps * 2
             i = 0
             do while (result%epsilon>mineps)
                 if (i/=0) then
                     if (resultx%epsilon>mineps.and.resulty%epsilon>mineps) return
                 end if
-                mineps = mineps*0.5
-                resultx = eval(input%a,mineps)
+                minepstmp = minepstmp*0.5
+                resultx = eval(input%a,minepstmp)
                 xmin = sign(abs(resultx%val)-resultx%epsilon,resultx%val)
                 xmax = sign(abs(resultx%val)+resultx%epsilon,resultx%val)
 
-                resulty = eval(input%b,mineps)
+                resulty = eval(input%b,minepstmp)
                 ymin = sign(abs(resulty%val)-resulty%epsilon,resulty%val)
                 ymax = sign(abs(resulty%val)+resulty%epsilon,resulty%val)
             ! zmax = xmax/ymin
