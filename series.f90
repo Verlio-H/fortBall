@@ -90,6 +90,7 @@ contains
             c%type = INT_N
             c%val = a%val
             c%offset = a%offset+b
+            c%multiplication = a%multiplication
         case (INT_INF)
             c = a
         end select
@@ -645,7 +646,8 @@ contains
             case (INT_VAL)
                 write(unit,'(A,I0,A)') repeat('  ',indent)//'int:',val%numb1%val,achar(10)
             case (INT_N)
-                write(unit,'(A,I0,A,I0,A)') repeat('  ',indent)//'n:',val%numb1%val,'+',val%numb1%offset,achar(10)
+                write(unit,'(A,I0,A,I0,A,I0,A)') repeat('  ',indent)//'n:',val%numb1%val,'*',val%numb1%multiplication,&
+                 '+',val%numb1%offset,achar(10)
             case (INT_INF)
                 write(unit,'(A)') repeat('  ',indent)//'infinity'//achar(10)
             end select
@@ -655,7 +657,8 @@ contains
             case (INT_VAL)
                 write(unit,'(A,I0,A)') repeat('  ',indent+1)//'int:',val%numb1%val,achar(10)
             case (INT_N)
-                write(unit,'(A,I0,A,I0,A)') repeat('  ',indent+1)//'n:',val%numb1%val,'+',val%numb1%offset,achar(10)
+                write(unit,'(A,I0,A,I0,A,I0,A)') repeat('  ',indent+1)//'n:',val%numb1%val,'*',val%numb1%multiplication,&
+                 '+',val%numb1%offset,achar(10)
             case (INT_INF)
                 write(unit,'(A)') repeat('  ',indent+1)//'infinity'//achar(10)
             end select
@@ -669,7 +672,7 @@ contains
             case (INT_VAL)
                 write(unit,'(A,I0,A)') 'int:',val%numb1%val,achar(10)
             case (INT_N)
-                write(unit,'(A,I0,A,I0,A)') 'n:',val%numb1%val,'+',val%numb1%offset,achar(10)
+                write(unit,'(A,I0,A,I0,A,I0,A)') 'n:',val%numb1%val,'*',val%numb1%multiplication,'+',val%numb1%offset,achar(10)
             case (INT_INF)
                 write(unit,'(A)') 'infinity'//achar(10)
             end select
@@ -690,7 +693,8 @@ contains
             case (INT_VAL)
                 write(unit,'(A,I0,A)') repeat('  ',indent+2)//'int:',val%numb1%val,achar(10)
             case (INT_N)
-                write(unit,'(A,I0,A,I0,A)') repeat('  ',indent+2)//'n:',val%numb1%val,'+',val%numb1%offset,achar(10)
+                write(unit,'(A,I0,A,I0,A,I0,A)') repeat('  ',indent+2)//'n:',val%numb1%val,'*',val%numb1%multiplication,&
+                 '+',val%numb1%offset,achar(10)
             case (INT_INF)
                 write(unit,'(A)') repeat('  ',indent+2)//'infinity'//achar(10)
             end select
@@ -699,7 +703,8 @@ contains
             case (INT_VAL)
                 write(unit,'(A,I0,A)') repeat('  ',indent+2)//'int:',val%numb2%val,achar(10)
             case (INT_N)
-                write(unit,'(A,I0,A,I0,A)') repeat('  ',indent+2)//'n:',val%numb2%val,'+',val%numb2%offset,achar(10)
+                write(unit,'(A,I0,A,I0,A,I0,A)') repeat('  ',indent+2)//'n:',val%numb2%val,'*',val%numb2%multiplication,&
+                 '+',val%numb2%offset,achar(10)
             case (INT_INF)
                 write(unit,'(A)') repeat('  ',indent+2)//'infinity'//achar(10)
             end select
