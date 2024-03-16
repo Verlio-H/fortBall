@@ -452,8 +452,7 @@ contains
             case (INT_INF)
                 result%val = 1./0. ! generate infinity, really should never be used but is here for completeness sake
             end select
-            !result%epsilon = 2**real(exponent(result%val)-112,real128)/2
-            result%epsilon = 0 !this might be incorrect depending on the fortran rules for gamma intrinsic
+            result%epsilon = 2**real(exponent(result%val)-112,real128)/2
         case (TYPE_ADD)
             result%epsilon = 100000000
             maxepstmp = maxeps * 2
@@ -481,6 +480,7 @@ contains
             do while (result%epsilon>maxeps)
                 if (i/=0) then
                     if (resultx%epsilon>maxeps) return
+                    if (2**real(exponent(result%val)-112,real128)>maxeps) return
                 end if
                 maxepstmp = maxeps*0.5
 
@@ -501,6 +501,7 @@ contains
                 ULP = 2**real(exponent(result%val)-112,real128)
             ! error = max(emax,emin) + 1/2 ULP
                 result%epsilon = max(zmax,zmin)+ULP/2
+
                 i = i + 1
             end do
         case (TYPE_MLT)
@@ -510,6 +511,7 @@ contains
             do while (result%epsilon>maxeps)
                 if (i/=0) then
                     if (resultx%epsilon>maxepstmp.and.resulty%epsilon>maxepstmp) return
+                    if (2**real(exponent(result%val)-112,real128)>maxeps) return
                 end if
                 maxepstmp = maxepstmp*0.5
                 resultx = eval(input%a,maxepstmp)
@@ -537,6 +539,7 @@ contains
             do while (result%epsilon>maxeps)
                 if (i/=0) then
                     if (resultx%epsilon>maxeps.and.resulty%epsilon>maxeps) return
+                    if (2**real(exponent(result%val)-112,real128)>maxeps) return
                 end if
                 maxepstmp = maxepstmp*0.5
                 resultx = eval(input%a,maxepstmp)
@@ -573,13 +576,12 @@ contains
             result%epsilon = 0
             do
                 sumstack(sumptr) = i
-                resultx = eval(input%a,maxeps/10)
+                resultx = eval(input%a,maxeps/100)
                 result%val = result%val+resultx%val
                 result%epsilon = result%epsilon+resultx%epsilon+2**real(exponent(result%val)-112,real128)/2
 
-                resulty = eval(input%b,maxeps/10)
+                resulty = eval(input%b,maxeps/100)
                 resulty%val = abs(resulty%val)
-
                 if (i>k.and.resulty%val+resulty%epsilon+result%epsilon<=maxeps) exit
                 i = i + 1
                 if (i>j) exit
