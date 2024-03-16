@@ -24,6 +24,7 @@ module series
         integer :: type
         integer :: val
         integer :: offset = 0
+        integer :: multiplication = 1
     end type
 
     type(expandedint), parameter :: infinity = expandedint(INT_INF,0)
@@ -43,11 +44,13 @@ module series
     end type
 
     interface operator(+)
-        module procedure addition, addition_int_numb, addition_numb_int, eintadd
+        module procedure addition, addition_int_numb, addition_numb_int
+        module procedure eintadd, eintaddrev
     end interface
 
     interface operator(-)
-        module procedure subtract, subtract_int_numb, subtract_numb_int, eintsub
+        module procedure subtract, subtract_int_numb, subtract_numb_int
+        module procedure eintsub, eintsubrev
     end interface
 
     interface operator(/)
@@ -56,6 +59,7 @@ module series
 
     interface operator(*)
         module procedure multiply, multiply_int_numb, multiply_numb_int
+        module procedure eintmlt, eintmltrev
     end interface
 
     interface operator(**)
@@ -91,10 +95,45 @@ contains
         end select
     end function
 
+    pure elemental type(expandedint) function eintaddrev(b,a) result(c)
+        type(expandedint), intent(in) :: a
+        integer, intent(in) :: b
+        c = eintadd(a,b)
+    end function
+
     pure elemental type(expandedint) function eintsub(a,b) result(c)
         type(expandedint), intent(in) :: a
         integer, intent(in) :: b
         c = eintadd(a,-b)
+    end function
+
+    pure elemental type(expandedint) function eintsubrev(b,a) result(c)
+        type(expandedint), intent(in) :: a
+        integer, intent(in) :: b
+        c = b+(-1)*a
+    end function
+
+    pure elemental type(expandedint) function eintmlt(a,b) result(c)
+        type(expandedint), intent(in) :: a
+        integer, intent(in) :: b
+        select case (a%type)
+        case (INT_VAL)
+            c%type = INT_VAL
+            c%val = a%val*b
+        case (INT_N)
+            c%type = INT_N
+            c%val = a%val
+            c%offset = a%offset*b
+            c%multiplication = a%multiplication*b
+        case (INT_INF)
+            c = a
+        end select
+    end function
+
+    pure elemental type(expandedint) function eintmltrev(b,a) result(c)
+        type(expandedint), intent(in) :: a
+        integer, intent(in) :: b
+        c = eintmlt(a,b)
     end function
 
     pure elemental type(number) function arg(argNumb,derivative)
@@ -113,7 +152,7 @@ contains
             j = input%val
         case (INT_N)
             if (input%val>=sumptr) error stop "sum depth not great enough"
-            j = sumstack(sumptr-input%val)+input%offset
+            j = sumstack(sumptr-input%val)*input%multiplication+input%offset
         case (INT_INF)
             j = huge(j)
         end select
@@ -394,7 +433,7 @@ contains
                 result%val = input%numb1%val
             case (INT_N)
                 if (input%numb1%val>=sumptr) error stop "sum depth not great enough"
-                result%val = sumstack(sumptr-input%numb1%val)+input%numb1%offset
+                result%val = sumstack(sumptr-input%numb1%val)*input%numb1%multiplication+input%numb1%offset
             case (INT_INF)
                 result%val = 1./0. ! generate infinity, really should never be used but is here for completeness sake
             end select
@@ -407,7 +446,7 @@ contains
                 result%val = gamma(result%val+1)
             case (INT_N)
                 if (input%numb1%val>=sumptr) error stop "sum depth not great enough"
-                result%val = sumstack(sumptr-input%numb1%val)+input%numb1%offset
+                result%val = sumstack(sumptr-input%numb1%val)*input%numb1%multiplication+input%numb1%offset
                 result%val = gamma(result%val+1)
             case (INT_INF)
                 result%val = 1./0. ! generate infinity, really should never be used but is here for completeness sake
