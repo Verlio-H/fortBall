@@ -115,16 +115,18 @@ contains
         end select
     end function
 
-    pure elemental type(number) function sum(low,high,expr,error)
+    pure elemental type(number) function sum(low,high,expr,error,minn)
         type(expandedint), intent(in) :: low
         type(expandedint), intent(in) :: high
         type(number), intent(in) :: expr
         type(number), intent(in) :: error
+        integer, intent(in), optional :: minn
         sum%type = TYPE_SUM
         sum%numb1 = low
         sum%numb2 = high
         sum%a = expr
         sum%b = error
+        if (present(minn)) sum%minn = minn
     end function
 
     pure elemental type(expandedint) function eint(input)
@@ -249,7 +251,7 @@ contains
         multiply_int_numb = multiply(intval(a),b)
     end function
 
-    pure recursive function populate(input,args) result(result)
+    recursive function populate(input,args) result(result)
         type(number), intent(in) :: input
         type(number), intent(in) :: args(:)
         type(number) :: result
@@ -273,13 +275,13 @@ contains
         case (TYPE_DIV)
             result = populate(input%a,args)/populate(input%b,args)
         case (TYPE_SUM)
-            result = sum(input%numb1,input%numb2,populate(input%a,args),populate(input%b,args))
+            result = sum(input%numb1,input%numb2,populate(input%a,args),populate(input%b,args),input%minn)
         case default
             error stop
         end select
     end function 
 
-    pure elemental recursive type(number) function diff(input, argument) result(result)
+    recursive type(number) function diff(input, argument) result(result)
         type(number), intent(in) :: input
         integer, intent(in) :: argument
         type(number) :: temp1, temp2
@@ -357,8 +359,7 @@ contains
                 result = (input%b*temp1-input%a*temp2)/input%b**2
             end if
         case (TYPE_SUM)
-            result = sum(input%numb1,input%numb2,diff(input%a,argument),diff(input%b,argument))
-            result%minn = input%minn + 1
+            result = sum(input%numb1,input%numb2,diff(input%a,argument),diff(input%b,argument),input%minn+1)
         case default
             error stop
         end select
