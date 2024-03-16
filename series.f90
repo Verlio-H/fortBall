@@ -69,6 +69,10 @@ module series
     interface numb
         module procedure intval, eintval
     end interface
+
+    interface factorial
+        module procedure factorial_int, factorial_eint
+    end interface
 contains
 
     pure elemental type(expandedint) function eintadd(a,b) result(c)
@@ -151,11 +155,22 @@ contains
         eintval%numb1 = input
     end function
 
+    pure elemental type(number) function factorial_int(a)
+        integer, intent(in) :: a
+        factorial_int = number(TYPE_FACT)
+        factorial_int%numb1 = eint(a)
+    end function
+
+    pure elemental type(number) function factorial_eint(a)
+        type(expandedint), intent(in) :: a
+        factorial_eint = number(TYPE_FACT)
+        factorial_eint%numb1 = a
+    end function
+
     pure elemental type(number) function exponentiate(a,b)
         type(number), intent(in) :: a
         integer, intent(in) :: b
         exponentiate = number(TYPE_POW)
-        exponentiate%type = TYPE_POW
         exponentiate%a = a
         exponentiate%numb1 = expandedint(INT_VAL,b)
     end function
@@ -164,7 +179,6 @@ contains
         type(number), intent(in) :: a
         type(expandedint), intent(in) :: b
         expanded_exponentiate = number(TYPE_POW)
-        expanded_exponentiate%type = TYPE_POW
         expanded_exponentiate%a = a
         expanded_exponentiate%numb1 = b
     end function
@@ -251,7 +265,7 @@ contains
         multiply_int_numb = multiply(intval(a),b)
     end function
 
-    recursive function populate(input,args) result(result)
+    pure recursive function populate(input,args) result(result)
         type(number), intent(in) :: input
         type(number), intent(in) :: args(:)
         type(number) :: result
@@ -264,7 +278,7 @@ contains
                     result = diff(result,-1)
                 end do
             end if
-        case (TYPE_INT)
+        case (TYPE_INT,TYPE_FACT)
             result = input
         case (TYPE_ADD)
             result = populate(input%a,args)+populate(input%b,args)
@@ -281,7 +295,7 @@ contains
         end select
     end function 
 
-    recursive type(number) function diff(input, argument) result(result)
+    pure elemental recursive type(number) function diff(input, argument) result(result)
         type(number), intent(in) :: input
         integer, intent(in) :: argument
         type(number) :: temp1, temp2
@@ -297,7 +311,7 @@ contains
             else
                 result = arg(input%numb1%val,input%numb2%val+1)
             end if
-        case (TYPE_INT)
+        case (TYPE_INT,TYPE_FACT)
             result = intval(0)
         case (TYPE_ADD)
             temp1 = diff(input%a,argument)
@@ -365,11 +379,11 @@ contains
         end select
     end function
 
-    recursive type(Ball) function eval(input,mineps) result(result)
+    impure elemental recursive type(Ball) function eval(input,maxeps) result(result)
         type(number), intent(in) :: input
-        real(real128), value :: mineps
+        real(real128), value :: maxeps
         type(Ball) :: resultx, resulty
-        real(real128) :: xmax, xmin, ymax, ymin, zmax, zmin, znom, ULP, minepstmp
+        real(real128) :: xmax, xmin, ymax, ymin, zmax, zmin, znom, ULP, maxepstmp
         integer :: i, j, k
         select case (input%type)
         case (TYPE_VAR)
@@ -386,19 +400,33 @@ contains
             end select
             !result%epsilon = 2**real(exponent(result%val)-112,real128)/2
             result%epsilon = 0
+        case (TYPE_FACT)
+            select case (input%numb1%type)
+            case (INT_VAL)
+                result%val = input%numb1%val
+                result%val = gamma(result%val+1)
+            case (INT_N)
+                if (input%numb1%val>=sumptr) error stop "sum depth not great enough"
+                result%val = sumstack(sumptr-input%numb1%val)+input%numb1%offset
+                result%val = gamma(result%val+1)
+            case (INT_INF)
+                result%val = 1./0. ! generate infinity, really should never be used but is here for completeness sake
+            end select
+            !result%epsilon = 2**real(exponent(result%val)-112,real128)/2
+            result%epsilon = 0 !this might be incorrect depending on the fortran rules for gamma intrinsic
         case (TYPE_ADD)
             result%epsilon = 100000000
-            minepstmp = mineps * 2
+            maxepstmp = maxeps * 2
             i = 0
 
             
-            do while (result%epsilon>mineps)
+            do while (result%epsilon>maxeps)
                 if (i/=0) then
-                    if (resultx%epsilon>mineps.and.resulty%epsilon>mineps) return
+                    if (resultx%epsilon>maxeps.and.resulty%epsilon>maxeps) return
                 end if
-                minepstmp = minepstmp*0.5
-                resultx = eval(input%a,minepstmp/2)
-                resulty = eval(input%b,minepstmp/2)
+                maxepstmp = maxepstmp*0.5
+                resultx = eval(input%a,maxepstmp/2)
+                resulty = eval(input%b,maxepstmp/2)
                 result%val = resultx%val+resulty%val
             ! ULP = 2^(exp-(pbits-1))
                 ULP = 2**real(exponent(result%val)-112,real128)
@@ -408,16 +436,16 @@ contains
             end do
         case (TYPE_POW)
             result%epsilon = 100000000
-            minepstmp = mineps * 2
+            maxepstmp = maxeps * 2
             i = 0
-            do while (result%epsilon>mineps)
+            do while (result%epsilon>maxeps)
                 if (i/=0) then
-                    if (resultx%epsilon>mineps) return
+                    if (resultx%epsilon>maxeps) return
                 end if
-                minepstmp = mineps*0.5
+                maxepstmp = maxeps*0.5
 
                 j = collapseInt(input%numb1)
-                resultx = eval(input%a,minepstmp)
+                resultx = eval(input%a,maxepstmp)
                 xmin = sign(abs(resultx%val)-resultx%epsilon,resultx%val)
                 xmax = sign(abs(resultx%val)+resultx%epsilon,resultx%val)
 
@@ -437,17 +465,17 @@ contains
             end do
         case (TYPE_MLT)
             result%epsilon = 100000000
-            minepstmp = mineps * 2
+            maxepstmp = maxeps * 2
             i = 0
-            do while (result%epsilon>mineps)
+            do while (result%epsilon>maxeps)
                 if (i/=0) then
-                    if (resultx%epsilon>minepstmp.and.resulty%epsilon>minepstmp) return
+                    if (resultx%epsilon>maxepstmp.and.resulty%epsilon>maxepstmp) return
                 end if
-                minepstmp = minepstmp*0.5
-                resultx = eval(input%a,minepstmp)
+                maxepstmp = maxepstmp*0.5
+                resultx = eval(input%a,maxepstmp)
                 xmax = sign(abs(resultx%val)+resultx%epsilon,resultx%val)
 
-                resulty = eval(input%b,minepstmp)
+                resulty = eval(input%b,maxepstmp)
                 ymax = sign(abs(resulty%val)+resulty%epsilon,resulty%val)
             ! zmax = xmax*ymax
                 zmax = xmax*ymax
@@ -464,18 +492,18 @@ contains
             end do
         case (TYPE_DIV)
             result%epsilon = 100000000
-            minepstmp = mineps * 2
+            maxepstmp = maxeps * 2
             i = 0
-            do while (result%epsilon>mineps)
+            do while (result%epsilon>maxeps)
                 if (i/=0) then
-                    if (resultx%epsilon>mineps.and.resulty%epsilon>mineps) return
+                    if (resultx%epsilon>maxeps.and.resulty%epsilon>maxeps) return
                 end if
-                minepstmp = minepstmp*0.5
-                resultx = eval(input%a,minepstmp)
+                maxepstmp = maxepstmp*0.5
+                resultx = eval(input%a,maxepstmp)
                 xmin = sign(abs(resultx%val)-resultx%epsilon,resultx%val)
                 xmax = sign(abs(resultx%val)+resultx%epsilon,resultx%val)
 
-                resulty = eval(input%b,minepstmp)
+                resulty = eval(input%b,maxepstmp)
                 ymin = sign(abs(resulty%val)-resulty%epsilon,resulty%val)
                 ymax = sign(abs(resulty%val)+resulty%epsilon,resulty%val)
             ! zmax = xmax/ymin
@@ -505,14 +533,14 @@ contains
             result%epsilon = 0
             do
                 sumstack(sumptr) = i
-                resultx = eval(input%a,mineps/10)
+                resultx = eval(input%a,maxeps/10)
                 result%val = result%val+resultx%val
                 result%epsilon = result%epsilon+resultx%epsilon+2**real(exponent(result%val)-112,real128)/2
 
-                resulty = eval(input%b,mineps/10)
+                resulty = eval(input%b,maxeps/10)
                 resulty%val = abs(resulty%val)
 
-                if (i>k.and.resulty%val+resulty%epsilon+result%epsilon<=mineps) exit
+                if (i>k.and.resulty%val+resulty%epsilon+result%epsilon<=maxeps) exit
                 i = i + 1
                 if (i>j) exit
             end do
@@ -580,7 +608,17 @@ contains
             case (INT_N)
                 write(unit,'(A,I0,A,I0,A)') repeat('  ',indent)//'n:',val%numb1%val,'+',val%numb1%offset,achar(10)
             case (INT_INF)
-                write(unit,'(A)') repeat(' ',indent)//'infinity'//achar(10)
+                write(unit,'(A)') repeat('  ',indent)//'infinity'//achar(10)
+            end select
+        case (TYPE_FACT)
+            write(unit,'(A)') repeat('  ',indent)//'!:'//achar(10)
+            select case (val%numb1%type)
+            case (INT_VAL)
+                write(unit,'(A,I0,A)') repeat('  ',indent+1)//'int:',val%numb1%val,achar(10)
+            case (INT_N)
+                write(unit,'(A,I0,A,I0,A)') repeat('  ',indent+1)//'n:',val%numb1%val,'+',val%numb1%offset,achar(10)
+            case (INT_INF)
+                write(unit,'(A)') repeat('  ',indent+1)//'infinity'//achar(10)
             end select
         case (TYPE_ADD)
             write(unit,'(A)') repeat('  ',indent)//'+:'//achar(10)
