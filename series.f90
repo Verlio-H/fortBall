@@ -390,6 +390,8 @@ contains
             result%epsilon = 100000000
             mineps = mineps * 2
             i = 0
+
+            
             do while (result%epsilon>mineps)
                 if (i/=0) then
                     if (resultx%epsilon>mineps.and.resulty%epsilon>mineps) return
@@ -520,6 +522,7 @@ contains
                 if (i>j) exit
             end do
             result%epsilon=resulty%val+resulty%epsilon+result%epsilon
+            sumptr = sumptr - 1
         case default
             error stop
         end select
@@ -609,28 +612,28 @@ contains
             call printNumb(unit,val%a,indent+1)
             call printNumb(unit,val%b,indent+1)
         case (TYPE_SUM)
-            write(unit,'(A)') repeat(' ',indent)//'sum:'//achar(10)
-            write(unit,'(A)') repeat(' ',indent+1)//'from:'//achar(10)
+            write(unit,'(A)') repeat('  ',indent)//'sum:'//achar(10)
+            write(unit,'(A)') repeat('  ',indent+1)//'from:'//achar(10)
             select case (val%numb1%type)
             case (INT_VAL)
                 write(unit,'(A,I0,A)') repeat('  ',indent+2)//'int:',val%numb1%val,achar(10)
             case (INT_N)
                 write(unit,'(A,I0,A,I0,A)') repeat('  ',indent+2)//'n:',val%numb1%val,'+',val%numb1%offset,achar(10)
             case (INT_INF)
-                write(unit,'(A)') repeat(' ',indent+2)//'infinity'//achar(10)
+                write(unit,'(A)') repeat('  ',indent+2)//'infinity'//achar(10)
             end select
-            write(unit,'(A)') repeat(' ',indent+1)//'to:'//achar(10)
+            write(unit,'(A)') repeat('  ',indent+1)//'to:'//achar(10)
             select case (val%numb2%type)
             case (INT_VAL)
                 write(unit,'(A,I0,A)') repeat('  ',indent+2)//'int:',val%numb2%val,achar(10)
             case (INT_N)
                 write(unit,'(A,I0,A,I0,A)') repeat('  ',indent+2)//'n:',val%numb2%val,'+',val%numb2%offset,achar(10)
             case (INT_INF)
-                write(unit,'(A)') repeat(' ',indent+2)//'infinity'//achar(10)
+                write(unit,'(A)') repeat('  ',indent+2)//'infinity'//achar(10)
             end select
-            write(unit,'(A)') repeat(' ',indent+1)//'expression:'//achar(10)
+            write(unit,'(A)') repeat('  ',indent+1)//'expression:'//achar(10)
             call printNumb(unit,val%a,indent+2)
-            write(unit,'(A)') repeat(' ',indent+1)//'error:'//achar(10)
+            write(unit,'(A)') repeat('  ',indent+1)//'error:'//achar(10)
             call printNumb(unit,val%b,indent+2)
         case default
             write(unit,'(A)') 'unknown type'//achar(10)
