@@ -13,7 +13,7 @@ module series
     integer, parameter :: TYPE_VAR = 7
 
     integer, parameter :: INT_VAL = 0
-    integer, parameter :: INT_SUMBOUND = 1
+    integer, parameter :: INT_N = 1
     integer, parameter :: INT_INF = 2
 
     integer, parameter :: MAX_SUM_DEPTH = 1024
@@ -23,6 +23,7 @@ module series
     type expandedint
         integer :: type
         integer :: val
+        integer :: offset = 0
     end type
 
     type(expandedint), parameter :: infinity = expandedint(INT_INF,0)
@@ -33,6 +34,7 @@ module series
         type(Number), allocatable :: b
         type(expandedint) :: numb1 = expandedint(INT_VAL,0)
         type(expandedint) :: numb2 = expandedint(INT_VAL,0)
+        integer :: minn = 0
     end type
 
     type Ball
@@ -41,11 +43,11 @@ module series
     end type
 
     interface operator(+)
-        module procedure addition, addition_int_numb, addition_numb_int
+        module procedure addition, addition_int_numb, addition_numb_int, eintadd
     end interface
 
     interface operator(-)
-        module procedure subtract, subtract_int_numb, subtract_numb_int
+        module procedure subtract, subtract_int_numb, subtract_numb_int, eintsub
     end interface
 
     interface operator(/)
@@ -68,6 +70,29 @@ module series
         module procedure intval, eintval
     end interface
 contains
+
+    pure elemental type(expandedint) function eintadd(a,b) result(c)
+        type(expandedint), intent(in) :: a
+        integer, intent(in) :: b
+        select case (a%type)
+        case (INT_VAL)
+            c%type = INT_VAL
+            c%val = a%val+b
+        case (INT_N)
+            c%type = INT_N
+            c%val = a%val
+            c%offset = a%offset+b
+        case (INT_INF)
+            c = a
+        end select
+    end function
+
+    pure elemental type(expandedint) function eintsub(a,b) result(c)
+        type(expandedint), intent(in) :: a
+        integer, intent(in) :: b
+        c = eintadd(a,-b)
+    end function
+
     pure elemental type(number) function arg(argNumb,derivative)
         integer, intent(in) :: argNumb
         integer, intent(in), optional :: derivative
@@ -82,9 +107,9 @@ contains
         select case (input%type)
         case (INT_VAL)
             j = input%val
-        case (INT_SUMBOUND)
+        case (INT_N)
             if (input%val>=sumptr) error stop "sum depth not great enough"
-            j = sumstack(sumptr-input%val)
+            j = sumstack(sumptr-input%val)+input%offset
         case (INT_INF)
             j = huge(j)
         end select
@@ -109,7 +134,7 @@ contains
 
     pure elemental type(expandedint) function eintsum(input)
         integer, intent(in) :: input
-        eintsum = expandedint(INT_SUMBOUND,input)
+        eintsum = expandedint(INT_N,input)
     end function
 
     pure elemental type(number) function intval(input)
@@ -162,7 +187,7 @@ contains
         addition_int_numb = addition(intval(a),b)
     end function
 
-    pure type(number) function subtract(a,b)
+    pure elemental type(number) function subtract(a,b)
         type(number), intent(in) :: a
         type(number), intent(in) :: b
         subtract%type = TYPE_ADD
@@ -176,7 +201,7 @@ contains
         subtract_numb_int = subtract(a,intval(b))
     end function
 
-    type(number) function subtract_int_numb(a,b)
+    pure elemental type(number) function subtract_int_numb(a,b)
         integer, intent(in) :: a
         type(number), intent(in) :: b
         subtract_int_numb = subtract(intval(a),b)
@@ -257,6 +282,8 @@ contains
     pure elemental recursive type(number) function diff(input, argument) result(result)
         type(number), intent(in) :: input
         integer, intent(in) :: argument
+        type(number) :: temp1, temp2
+        logical :: ltemp1, ltemp2
         select case (input%type)
         case (TYPE_VAR)
             if (input%numb1%val==argument) then
@@ -271,15 +298,67 @@ contains
         case (TYPE_INT)
             result = intval(0)
         case (TYPE_ADD)
-            result = diff(input%a,argument)+diff(input%b,argument)
+            temp1 = diff(input%a,argument)
+            ltemp1 = .false.
+            if (temp1%type==TYPE_INT.and.temp1%numb1%type==INT_VAL.and.temp1%numb1%val==0) ltemp1 = .true.
+            temp2 = diff(input%b,argument)
+            ltemp2 = .false.
+            if (temp2%type==TYPE_INT.and.temp2%numb1%type==INT_VAL.and.temp2%numb1%val==0) ltemp2 = .true.
+            if (ltemp1.and.ltemp2) then
+                result = numb(0)
+            else if (ltemp1) then
+                result = temp2
+            else if (ltemp2) then
+                result = temp1
+            else
+                result = temp1+temp2
+            end if
         case (TYPE_POW)
-            result = numb(input%numb1)*input%a**input%numb1/input%a*diff(input%a,argument)
+            temp1 = diff(input%a,argument)
+            if (temp1%type==TYPE_INT.and.temp1%numb1%type==INT_VAL.and.temp1%numb1%val==0) then
+                result = numb(0)
+            else
+                if (temp1%type==TYPE_INT.and.temp1%numb1%type==INT_VAL.and.temp1%numb1%val==1) then
+                    result = numb(input%numb1)*input%a**(input%numb1-1)
+                else
+                    result = numb(input%numb1)*input%a**(input%numb1-1)*diff(input%a,argument)
+                end if
+            end if
         case (TYPE_MLT)
-            result = diff(input%a,argument)*input%b+input%a*diff(input%b,argument)
+            temp1 = diff(input%a,argument)
+            ltemp1 = .false.
+            if (temp1%type==TYPE_INT.and.temp1%numb1%type==INT_VAL.and.temp1%numb1%val==0) ltemp1 = .true.
+            temp2 = diff(input%b,argument)
+            ltemp2 = .false.
+            if (temp2%type==TYPE_INT.and.temp2%numb1%type==INT_VAL.and.temp2%numb1%val==0) ltemp2 = .true.
+            if (ltemp1.and.ltemp2) then
+                result = numb(0)
+            else if (ltemp1) then
+                result = input%a*temp2
+            else if (ltemp2) then
+                result = temp1*input%b
+            else
+                result = temp1*input%b+input%a*temp2
+            end if
         case (TYPE_DIV)
-            result = (input%b*diff(input%a,argument)-input%a*diff(input%b,argument))/input%b**2
+            temp1 = diff(input%a,argument)
+            ltemp1 = .false.
+            if (temp1%type==TYPE_INT.and.temp1%numb1%type==INT_VAL.and.temp1%numb1%val==0) ltemp1 = .true.
+            temp2 = diff(input%b,argument)
+            ltemp2 = .false.
+            if (temp2%type==TYPE_INT.and.temp2%numb1%type==INT_VAL.and.temp2%numb1%val==0) ltemp2 = .true.
+            if (ltemp1.and.ltemp2) then
+                result = numb(0)
+            else if (ltemp1) then
+                result = 0-input%a*temp2/input%b**2
+            else if (ltemp2) then
+                result = temp1/input%b
+            else
+                result = (input%b*temp1-input%a*temp2)/input%b**2
+            end if
         case (TYPE_SUM)
             result = sum(input%numb1,input%numb2,diff(input%a,argument),diff(input%b,argument))
+            result%minn = input%minn + 1
         case default
             error stop
         end select
@@ -290,7 +369,7 @@ contains
         real(real128), value :: mineps
         type(Ball) :: resultx, resulty
         real(real128) :: xmax, xmin, ymax, ymin, zmax, zmin, znom, ULP
-        integer :: i, j
+        integer :: i, j, k
         select case (input%type)
         case (TYPE_VAR)
             error stop "Variables cannot be within any evaluated numbers"
@@ -298,9 +377,9 @@ contains
             select case (input%numb1%type)
             case (INT_VAL)
                 result%val = input%numb1%val
-            case (INT_SUMBOUND)
+            case (INT_N)
                 if (input%numb1%val>=sumptr) error stop "sum depth not great enough"
-                result%val = sumstack(sumptr-input%numb1%val)
+                result%val = sumstack(sumptr-input%numb1%val)+input%numb1%offset
             case (INT_INF)
                 result%val = 1./0. ! generate infinity, really should never be used but is here for completeness sake
             end select
@@ -420,6 +499,7 @@ contains
             end do
         case (TYPE_SUM)
             i=collapseInt(input%numb1)
+            k=i+input%minn
             j=collapseInt(input%numb2)
             sumptr = sumptr + 1
             ! add all 3 error bounds, so perhaps use n/10
@@ -434,7 +514,7 @@ contains
                 resulty = eval(input%b,mineps/10)
                 resulty%val = abs(resulty%val)
 
-                if (resulty%val+resulty%epsilon+result%epsilon<=mineps) exit
+                if (i>k.and.resulty%val+resulty%epsilon+result%epsilon<=mineps) exit
                 i = i + 1
                 if (i>j) exit
             end do
@@ -498,8 +578,8 @@ contains
             select case (val%numb1%type)
             case (INT_VAL)
                 write(unit,'(A,I0,A)') repeat('  ',indent)//'int:',val%numb1%val,achar(10)
-            case (INT_SUMBOUND)
-                write(unit,'(A,I0,A)') repeat('  ',indent)//'sumbound:',val%numb1%val,achar(10)
+            case (INT_N)
+                write(unit,'(A,I0,A,I0,A)') repeat('  ',indent)//'n:',val%numb1%val,'+',val%numb1%offset,achar(10)
             case (INT_INF)
                 write(unit,'(A)') repeat(' ',indent)//'infinity'//achar(10)
             end select
@@ -512,8 +592,8 @@ contains
             select case (val%numb1%type)
             case (INT_VAL)
                 write(unit,'(A,I0,A)') 'int:',val%numb1%val,achar(10)
-            case (INT_SUMBOUND)
-                write(unit,'(A,I0,A)') 'sumbound:',val%numb1%val,achar(10)
+            case (INT_N)
+                write(unit,'(A,I0,A,I0,A)') 'n:',val%numb1%val,'+',val%numb1%offset,achar(10)
             case (INT_INF)
                 write(unit,'(A)') 'infinity'//achar(10)
             end select
@@ -533,8 +613,8 @@ contains
             select case (val%numb1%type)
             case (INT_VAL)
                 write(unit,'(A,I0,A)') repeat('  ',indent+2)//'int:',val%numb1%val,achar(10)
-            case (INT_SUMBOUND)
-                write(unit,'(A,I0,A)') repeat('  ',indent+2)//'sumbound:',val%numb1%val,achar(10)
+            case (INT_N)
+                write(unit,'(A,I0,A,I0,A)') repeat('  ',indent+2)//'n:',val%numb1%val,'+',val%numb1%offset,achar(10)
             case (INT_INF)
                 write(unit,'(A)') repeat(' ',indent+2)//'infinity'//achar(10)
             end select
@@ -542,8 +622,8 @@ contains
             select case (val%numb2%type)
             case (INT_VAL)
                 write(unit,'(A,I0,A)') repeat('  ',indent+2)//'int:',val%numb2%val,achar(10)
-            case (INT_SUMBOUND)
-                write(unit,'(A,I0,A)') repeat('  ',indent+2)//'sumbound:',val%numb2%val,achar(10)
+            case (INT_N)
+                write(unit,'(A,I0,A,I0,A)') repeat('  ',indent+2)//'n:',val%numb2%val,'+',val%numb2%offset,achar(10)
             case (INT_INF)
                 write(unit,'(A)') repeat(' ',indent+2)//'infinity'//achar(10)
             end select
