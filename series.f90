@@ -11,14 +11,13 @@ module series
     integer, parameter :: TYPE_FACT = 5
     integer, parameter :: TYPE_SUM = 6
     integer, parameter :: TYPE_VAR = 7
+    integer, parameter :: TYPE_LASTCALC = 8
+    integer, parameter :: TYPE_LASTERR = 9
 
     integer, parameter :: INT_VAL = 0
     integer, parameter :: INT_N = 1
     integer, parameter :: INT_INF = 2
 
-    integer, parameter :: MAX_SUM_DEPTH = 1024
-    integer :: sumstack(MAX_SUM_DEPTH)
-    integer :: sumptr = 0
 
     type expandedint
         integer :: type
@@ -43,6 +42,12 @@ module series
         real(real128) :: val
         real(real128) :: epsilon
     end type
+
+    integer, parameter :: MAX_SUM_DEPTH = 1024
+    integer :: sumstack(MAX_SUM_DEPTH)
+    type(Ball) :: lastcalcstack(MAX_SUM_DEPTH)
+    type(Ball) :: lasterrorstack(MAX_SUM_DEPTH)
+    integer :: sumptr = 0
 
     interface operator(+)
         module procedure addition, addition_int_numb, addition_numb_int
@@ -95,6 +100,18 @@ contains
         case (INT_INF)
             c = a
         end select
+    end function
+
+    pure elemental type(number) function lastcalc(a)
+        integer, intent(in) :: a
+        lastcalc%type = TYPE_LASTCALC
+        lastcalc%minn = a
+    end function
+
+    pure elemental type(number) function lasterr(a)
+        integer, intent(in) :: a
+        lasterr%type = TYPE_LASTERR
+        lasterr%minn = a
     end function
 
     pure elemental type(expandedint) function eintaddrev(b,a) result(c)
@@ -319,7 +336,7 @@ contains
                     result = diff(result,input%diffs(i))
                 end do
             end if
-        case (TYPE_INT,TYPE_FACT)
+        case (TYPE_INT,TYPE_FACT,TYPE_LASTCALC,TYPE_LASTERR)
             result = input
         case (TYPE_ADD)
             result = populate(input%a,args)+populate(input%b,args)
@@ -360,6 +377,8 @@ contains
             end if
         case (TYPE_INT,TYPE_FACT)
             result = intval(0)
+        case (TYPE_LASTCALC,TYPE_LASTERR)
+            error stop "backreferences cannot be derived currently"
         case (TYPE_ADD)
             temp1 = diff(input%a,argument)
             ltemp1 = .false.
@@ -447,6 +466,10 @@ contains
             end select
             !result%epsilon = 2**real(exponent(result%val)-112,real128)/2
             result%epsilon = 0
+        case (TYPE_LASTCALC)
+            result = lastcalcstack(sumptr-input%minn)
+        case (TYPE_LASTERR)
+            result = lasterrorstack(sumptr-input%minn)
         case (TYPE_FACT)
             select case (input%numb1%type)
             case (INT_VAL)
@@ -581,8 +604,13 @@ contains
             ! add all 3 error bounds, so perhaps use n/10
             result%val = 0
             result%epsilon = 0
+            resulty%val = 1
+            resulty%epsilon = 0
+
             do
                 sumstack(sumptr) = i
+                lastcalcstack(sumptr) = result
+                lasterrorstack(sumptr) = resulty
                 resultx = eval(input%a,maxeps/100)
                 result%val = result%val+resultx%val
                 result%epsilon = result%epsilon+resultx%epsilon+2**real(exponent(result%val)-112,real128)/2
@@ -691,6 +719,10 @@ contains
             write(unit,'(A)') repeat('  ',indent)//'*:'//achar(10)
             call printNumb(unit,val%a,indent+1)
             call printNumb(unit,val%b,indent+1)
+        case (TYPE_LASTCALC)
+            write(unit,'(A,I0,A)') repeat('  ',indent)//'lastcalc:',val%numb1,achar(10)
+        case (TYPE_LASTERR)
+            write(unit,'(A,I0,A)') repeat('  ',indent)//'lasterr:',val%numb1,achar(10)
         case (TYPE_DIV)
             write(unit,'(A)') repeat('  ',indent)//'/:'//achar(10)
             call printNumb(unit,val%a,indent+1)
