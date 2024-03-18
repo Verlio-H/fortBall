@@ -35,6 +35,8 @@ module series
         type(expandedint) :: numb1 = expandedint(INT_VAL,0)
         type(expandedint) :: numb2 = expandedint(INT_VAL,0)
         integer :: minn = 0
+        real(real128) :: initval = 0
+        real(real128) :: initerr = 0
         integer, allocatable :: diffs(:)
     end type
 
@@ -177,18 +179,21 @@ contains
         end select
     end function
 
-    pure elemental type(number) function sum(low,high,expr,error,minn)
+    pure elemental type(number) function sum(low,high,expr,error,minn,startval,starterr)
         type(expandedint), intent(in) :: low
         type(expandedint), intent(in) :: high
         type(number), intent(in) :: expr
         type(number), intent(in) :: error
         integer, intent(in), optional :: minn
+        real(real128), intent(in), optional :: startval, starterr
         sum%type = TYPE_SUM
         sum%numb1 = low
         sum%numb2 = high
         sum%a = expr
         sum%b = error
         if (present(minn)) sum%minn = minn
+        if (present(startval)) sum%initval = startval
+        if (present(starterr)) sum%initerr = starterr
     end function
 
     pure elemental type(expandedint) function eint(input)
@@ -602,11 +607,10 @@ contains
             j=collapseInt(input%numb2)
             sumptr = sumptr + 1
             ! add all 3 error bounds, so perhaps use n/10
-            result%val = 0
+            result%val = input%initval
             result%epsilon = 0
-            resulty%val = 1
+            resulty%val = input%initerr
             resulty%epsilon = 0
-
             do
                 sumstack(sumptr) = i
                 lastcalcstack(sumptr) = result
