@@ -20,7 +20,7 @@ program newtons
     guess = 1
 
     ! a_n = -f(a_(n-1))/f'(a_(n-1))
-    ! e_n = f''(a_(n-1))/(2f'(a_+(n-1)))*e_(n-1)
+    ! e_n = f''(a_(n-1))/(2f'(a_(n-1)))*e_(n-1)
     an = 0-populate(f,[lastcalc(0)])/populate(diff(f,1),[lastcalc(0)])
     err = populate(diff(diff(f,1),1),[lastcalc(0)])/populate(2*diff(f,1),[lastcalc(0)])*lasterr(0)
 
