@@ -4,19 +4,23 @@ module series
 
 
     integer, parameter :: TYPE_INT = 0
-    integer, parameter :: TYPE_ADD = 1
-    integer, parameter :: TYPE_MLT = 2
-    integer, parameter :: TYPE_DIV = 3
-    integer, parameter :: TYPE_POW = 4
-    integer, parameter :: TYPE_FACT = 5
-    integer, parameter :: TYPE_SUM = 6
-    integer, parameter :: TYPE_VAR = 7
-    integer, parameter :: TYPE_LASTCALC = 8
-    integer, parameter :: TYPE_LASTERR = 9
+    integer, parameter :: TYPE_BALL = 1
+    integer, parameter :: TYPE_ADD = 2
+    integer, parameter :: TYPE_MLT = 3
+    integer, parameter :: TYPE_DIV = 4
+    integer, parameter :: TYPE_POW = 5
+    integer, parameter :: TYPE_FACT = 6
+    integer, parameter :: TYPE_SUM = 7
+    integer, parameter :: TYPE_SSUM = 8
+    integer, parameter :: TYPE_VAR = 9
+    integer, parameter :: TYPE_LASTCALC = 10
+    integer, parameter :: TYPE_LASTERR = 11
+
 
     integer, parameter :: INT_VAL = 0
     integer, parameter :: INT_N = 1
-    integer, parameter :: INT_INF = 2
+    integer, parameter :: INT_MAXN = 2
+    integer, parameter :: INT_INF = 3
 
 
     type expandedint
@@ -47,6 +51,7 @@ module series
 
     integer, parameter :: MAX_SUM_DEPTH = 1024
     integer :: sumstack(MAX_SUM_DEPTH)
+    integer :: ssummaxstack(MAX_SUM_DEPTH)
     type(Ball) :: lastcalcstack(MAX_SUM_DEPTH)
     type(Ball) :: lasterrorstack(MAX_SUM_DEPTH)
     integer :: sumptr = 0
@@ -79,7 +84,7 @@ module series
     end interface
 
     interface numb
-        module procedure intval, eintval
+        module procedure intval, eintval, numbball
     end interface
 
     interface factorial
@@ -196,6 +201,21 @@ contains
         if (present(starterr)) sum%initerr = starterr
     end function
 
+    pure elemental type(number) function ssum(low,high,expr,error,startval,starterr)
+        type(expandedint), intent(in) :: low
+        type(expandedint), intent(in) :: high
+        type(number), intent(in) :: expr
+        type(number), intent(in) :: error
+        real(real128), intent(in), optional :: startval, starterr
+        ssum%type = TYPE_SSUM
+        ssum%numb1 = low
+        ssum%numb2 = high
+        ssum%a = expr
+        ssum%b = error
+        if (present(startval)) ssum%initval = startval
+        if (present(starterr)) ssum%initerr = starterr
+    end function 
+
     pure elemental type(expandedint) function eint(input)
         integer, intent(in) :: input
         eint = expandedint(INT_VAL,input)
@@ -204,6 +224,18 @@ contains
     pure elemental type(expandedint) function eintsum(input)
         integer, intent(in) :: input
         eintsum = expandedint(INT_N,input)
+    end function
+
+    pure elemental type(expandedint) function eintsummax(input)
+        integer, intent(in) :: input
+        eintsummax = expandedint(INT_MAXN,input)
+    end function
+
+    pure elemental type(number) function numbball(val,err)
+        real(real128), intent(in) :: val, err
+        numbball%type = TYPE_BALL
+        numbball%initval = val
+        numbball%initerr = err
     end function
 
     pure elemental type(number) function intval(input)
@@ -341,7 +373,7 @@ contains
                     result = diff(result,input%diffs(i))
                 end do
             end if
-        case (TYPE_INT,TYPE_FACT,TYPE_LASTCALC,TYPE_LASTERR)
+        case (TYPE_INT,TYPE_FACT,TYPE_LASTCALC,TYPE_LASTERR,TYPE_BALL)
             result = input
         case (TYPE_ADD)
             result = populate(input%a,args)+populate(input%b,args)
@@ -352,7 +384,11 @@ contains
         case (TYPE_DIV)
             result = populate(input%a,args)/populate(input%b,args)
         case (TYPE_SUM)
-            result = sum(input%numb1,input%numb2,populate(input%a,args),populate(input%b,args),input%minn)
+            result = sum(input%numb1,input%numb2,populate(input%a,args),populate(input%b,args),&
+             input%minn,input%initval,input%initerr)
+        case (TYPE_SSUM)
+            result = ssum(input%numb1,input%numb2,populate(input%a,args),populate(input%b,args),&
+             input%initval,input%initerr)
         case default
             error stop
         end select
@@ -380,7 +416,7 @@ contains
                     result%diffs = [argument]
                 end if
             end if
-        case (TYPE_INT,TYPE_FACT)
+        case (TYPE_INT,TYPE_FACT,TYPE_BALL)
             result = intval(0)
         case (TYPE_LASTCALC,TYPE_LASTERR)
             error stop "backreferences cannot be derived currently"
@@ -444,7 +480,9 @@ contains
                 result = (input%b*temp1-input%a*temp2)/input%b**2
             end if
         case (TYPE_SUM)
-            result = sum(input%numb1,input%numb2,diff(input%a,argument),diff(input%b,argument),input%minn+1)
+        result = sum(input%numb1,input%numb2,diff(input%a,argument),diff(input%b,argument),input%minn+1,input%initval,input%initerr)
+        case (TYPE_SSUM)
+            result = ssum(input%numb1,input%numb2,diff(input%a,argument),diff(input%b,argument),input%initval,input%initerr)
         case default
             error stop
         end select
@@ -466,11 +504,17 @@ contains
             case (INT_N)
                 if (input%numb1%val>=sumptr) error stop "sum depth not great enough"
                 result%val = sumstack(sumptr-input%numb1%val)*input%numb1%multiplication+input%numb1%offset
+            case (INT_MAXN)
+                if (input%numb1%val>=sumptr) error stop "sum depth not great enough"
+                result%val = ssummaxstack(sumptr-input%numb1%val)*input%numb1%multiplication+input%numb1%offset
             case (INT_INF)
                 result%val = 1./0. ! generate infinity, really should never be used but is here for completeness sake
             end select
             !result%epsilon = 2**real(exponent(result%val)-112,real128)/2
             result%epsilon = 0
+        case (TYPE_BALL)
+            result%val = input%initval
+            result%epsilon = input%initerr
         case (TYPE_LASTCALC)
             result = lastcalcstack(sumptr-input%minn)
         case (TYPE_LASTERR)
@@ -484,6 +528,10 @@ contains
                 if (input%numb1%val>=sumptr) error stop "sum depth not great enough"
                 result%val = sumstack(sumptr-input%numb1%val)*input%numb1%multiplication+input%numb1%offset
                 result%val = gamma(result%val+1)
+            case (INT_MAXN)
+                if (input%numb1%val>=sumptr) error stop "sum depth not great enough"
+                result%val = ssummaxstack(sumptr-input%numb1%val)*input%numb1%multiplication+input%numb1%offset
+                result%val = gamma(result%val+1)
             case (INT_INF)
                 result%val = 1./0. ! generate infinity, really should never be used but is here for completeness sake
             end select
@@ -492,8 +540,6 @@ contains
             result%epsilon = 100000000
             maxepstmp = maxeps * 2
             i = 0
-
-            
             do while (result%epsilon>maxeps)
                 if (i/=0) then
                     if (resultx%epsilon>maxeps.and.resulty%epsilon>maxeps) return
@@ -615,17 +661,48 @@ contains
                 sumstack(sumptr) = i
                 lastcalcstack(sumptr) = result
                 lasterrorstack(sumptr) = resulty
-                resultx = eval(input%a,maxeps/100)
+                resultx = eval(input%a,maxeps/(i+10))
                 result%val = result%val+resultx%val
                 result%epsilon = result%epsilon+resultx%epsilon+2**real(exponent(result%val)-112,real128)/2
 
-                resulty = eval(input%b,maxeps/100)
+                resulty = eval(input%b,maxeps/(i+10))
                 resulty%val = abs(resulty%val)
                 if (i>k.and.resulty%val+resulty%epsilon+result%epsilon<=maxeps) exit
                 i = i + 1
                 if (i>j) exit
             end do
             result%epsilon=resulty%val+resulty%epsilon+result%epsilon
+            sumptr = sumptr - 1
+        case (TYPE_SSUM)
+            j=50
+            sumptr = sumptr + 1
+            resulty%val = maxeps+0.01
+            resulty%epsilon = maxeps
+            result%epsilon = maxeps
+            do while (resulty%val+resulty%epsilon+result%epsilon > maxeps)
+                ! this helps convergence significantly
+                j = j + atan(resulty%val/maxeps)*j + 50
+                result%val = input%initval
+                result%epsilon = 0
+                resulty%val = input%initerr
+                resulty%epsilon = 0
+                if (j>collapseInt(input%numb2)) j = collapseInt(input%numb2)
+                do i=collapseInt(input%numb1),j,1
+                    sumstack(sumptr) = i
+                    ssummaxstack(sumptr) = j
+                    lastcalcstack(sumptr) = result
+                    lasterrorstack(sumptr) = resulty
+                    resultx = eval(input%a,maxeps/(j+5))
+                    result%val = result%val+resultx%val
+                    result%epsilon = result%epsilon+resultx%epsilon+2**real(exponent(result%val)-112,real128)/2
+
+                    resulty = eval(input%b,maxeps/(j+5))
+                    resulty%val = abs(resulty%val)
+                end do
+                result%epsilon=resulty%val+resulty%epsilon+result%epsilon
+                print*,j
+                if (j==collapseInt(input%numb2)) exit
+            end do
             sumptr = sumptr - 1
         case default
             error stop
@@ -689,6 +766,9 @@ contains
             case (INT_N)
                 write(unit,'(A,I0,A,I0,A,I0,A)') repeat('  ',indent)//'n:',val%numb1%val,'*',val%numb1%multiplication,&
                  '+',val%numb1%offset,achar(10)
+            case (INT_MAXN)
+                write(unit,'(A,I0,A,I0,A,I0,A)') repeat('  ',indent)//'maxn:',val%numb1%val,'*',val%numb1%multiplication,&
+                 '+',val%numb1%offset,achar(10)
             case (INT_INF)
                 write(unit,'(A)') repeat('  ',indent)//'infinity'//achar(10)
             end select
@@ -699,6 +779,9 @@ contains
                 write(unit,'(A,I0,A)') repeat('  ',indent+1)//'int:',val%numb1%val,achar(10)
             case (INT_N)
                 write(unit,'(A,I0,A,I0,A,I0,A)') repeat('  ',indent+1)//'n:',val%numb1%val,'*',val%numb1%multiplication,&
+                 '+',val%numb1%offset,achar(10)
+            case (INT_MAXN)
+                write(unit,'(A,I0,A,I0,A,I0,A)') repeat('  ',indent+1)//'maxn:',val%numb1%val,'*',val%numb1%multiplication,&
                  '+',val%numb1%offset,achar(10)
             case (INT_INF)
                 write(unit,'(A)') repeat('  ',indent+1)//'infinity'//achar(10)
@@ -714,6 +797,8 @@ contains
                 write(unit,'(A,I0,A)') 'int:',val%numb1%val,achar(10)
             case (INT_N)
                 write(unit,'(A,I0,A,I0,A,I0,A)') 'n:',val%numb1%val,'*',val%numb1%multiplication,'+',val%numb1%offset,achar(10)
+            case (INT_MAXN)
+                write(unit,'(A,I0,A,I0,A,I0,A)') 'maxn:',val%numb1%val,'*',val%numb1%multiplication,'+',val%numb1%offset,achar(10)
             case (INT_INF)
                 write(unit,'(A)') 'infinity'//achar(10)
             end select
@@ -731,7 +816,7 @@ contains
             write(unit,'(A)') repeat('  ',indent)//'/:'//achar(10)
             call printNumb(unit,val%a,indent+1)
             call printNumb(unit,val%b,indent+1)
-        case (TYPE_SUM)
+        case (TYPE_SUM,TYPE_SSUM)
             write(unit,'(A)') repeat('  ',indent)//'sum:'//achar(10)
             write(unit,'(A)') repeat('  ',indent+1)//'from:'//achar(10)
             select case (val%numb1%type)
@@ -749,6 +834,9 @@ contains
                 write(unit,'(A,I0,A)') repeat('  ',indent+2)//'int:',val%numb2%val,achar(10)
             case (INT_N)
                 write(unit,'(A,I0,A,I0,A,I0,A)') repeat('  ',indent+2)//'n:',val%numb2%val,'*',val%numb2%multiplication,&
+                 '+',val%numb2%offset,achar(10)
+            case (INT_MAXN)
+                write(unit,'(A,I0,A,I0,A,I0,A)') repeat('  ',indent+2)//'maxn:',val%numb2%val,'*',val%numb2%multiplication,&
                  '+',val%numb2%offset,achar(10)
             case (INT_INF)
                 write(unit,'(A)') repeat('  ',indent+2)//'infinity'//achar(10)
