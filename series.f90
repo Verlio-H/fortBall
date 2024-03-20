@@ -700,7 +700,6 @@ contains
                     resulty%val = abs(resulty%val)
                 end do
                 result%epsilon=resulty%val+resulty%epsilon+result%epsilon
-                print*,j
                 if (j==collapseInt(input%numb2)) exit
             end do
             sumptr = sumptr - 1
