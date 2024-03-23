@@ -99,8 +99,8 @@ contains
         case (INT_VAL)
             c%type = INT_VAL
             c%val = a%val+b
-        case (INT_N)
-            c%type = INT_N
+        case (INT_N,INT_MAXN)
+            c%type = a%type
             c%val = a%val
             c%offset = a%offset+b
             c%multiplication = a%multiplication
@@ -146,8 +146,8 @@ contains
         case (INT_VAL)
             c%type = INT_VAL
             c%val = a%val*b
-        case (INT_N)
-            c%type = INT_N
+        case (INT_N,INT_MAXN)
+            c%type = a%type
             c%val = a%val
             c%offset = a%offset*b
             c%multiplication = a%multiplication*b
@@ -492,7 +492,7 @@ contains
         type(number), intent(in) :: input
         real(real128), value :: maxeps
         type(Ball) :: resultx, resulty
-        real(real128) :: xmax, xmin, ymax, ymin, zmax, zmin, znom, ULP, maxepstmp
+        real(real128) :: xmax, xmin, ymax, ymin, zmax, zmin, znom, ULP, maxepstmp, lasteps
         integer :: i, j, k
         select case (input%type)
         case (TYPE_VAR)
@@ -541,6 +541,7 @@ contains
             maxepstmp = maxeps * 2
             i = 0
             do while (result%epsilon>maxeps)
+                !print*,result%epsilon
                 if (i/=0) then
                     if (resultx%epsilon>maxeps.and.resulty%epsilon>maxeps) return
                 end if
@@ -552,12 +553,22 @@ contains
                 ULP = 2**real(exponent(result%val)-112,real128)
             ! error = max(emax,emin) + 1/2 ULP
                 result%epsilon = resultx%epsilon+resulty%epsilon+ULP/2
+                if (i/=0.and.result%epsilon>=lasteps) return
+                lasteps = result%epsilon
                 i = i + 1
             end do
         case (TYPE_POW)
             result%epsilon = 100000000
             maxepstmp = maxeps * 2
             i = 0
+
+            j = collapseInt(input%numb1)
+
+            if (j==0) then
+                result%val = 1
+                result%epsilon = 0
+                return
+            end if
             do while (result%epsilon>maxeps)
                 if (i/=0) then
                     if (resultx%epsilon>maxeps) return
@@ -565,7 +576,6 @@ contains
                 end if
                 maxepstmp = maxeps*0.5
 
-                j = collapseInt(input%numb1)
                 resultx = eval(input%a,maxepstmp)
                 xmin = sign(abs(resultx%val)-resultx%epsilon,resultx%val)
                 xmax = sign(abs(resultx%val)+resultx%epsilon,resultx%val)
@@ -582,6 +592,8 @@ contains
                 ULP = 2**real(exponent(result%val)-112,real128)
             ! error = max(emax,emin) + 1/2 ULP
                 result%epsilon = max(zmax,zmin)+ULP/2
+                if (i/=0.and.result%epsilon>=lasteps) return
+                lasteps = result%epsilon
 
                 i = i + 1
             end do
@@ -611,6 +623,8 @@ contains
                 ULP = 2**real(exponent(result%val)-112,real128)
             ! error = max(emax,emin) + 1/2 ULP
                 result%epsilon = zmax+ULP/2
+                if (i/=0.and.result%epsilon>=lasteps) return
+                lasteps = result%epsilon
                 i = i + 1
             end do
         case (TYPE_DIV)
@@ -619,8 +633,12 @@ contains
             i = 0
             do while (result%epsilon>maxeps)
                 if (i/=0) then
-                    if (resultx%epsilon>maxeps.and.resulty%epsilon>maxeps) return
-                    if (2**real(exponent(result%val)-112,real128)>maxeps) return
+                    if (resultx%epsilon>maxeps.and.resulty%epsilon>maxeps) then
+                        return
+                    end if
+                    if (2**real(exponent(result%val)-112,real128)>maxeps) then
+                        return
+                    end if
                 end if
                 maxepstmp = maxepstmp*0.5
                 resultx = eval(input%a,maxepstmp)
@@ -645,6 +663,8 @@ contains
                 ULP = 2**real(exponent(result%val)-112,real128)
             ! error = max(emax,emin) + 1/2 ULP
                 result%epsilon = max(zmax,zmin)+ULP/2
+                if (i/=0.and.result%epsilon>=lasteps) return
+                lasteps = result%epsilon
                 i = i + 1
             end do
         case (TYPE_SUM)
@@ -674,28 +694,32 @@ contains
             result%epsilon=resulty%val+resulty%epsilon+result%epsilon
             sumptr = sumptr - 1
         case (TYPE_SSUM)
-            j=50
+            j=10
             sumptr = sumptr + 1
             resulty%val = maxeps+0.01
             resulty%epsilon = maxeps
             result%epsilon = maxeps
             do while (resulty%val+resulty%epsilon+result%epsilon > maxeps)
                 ! this helps convergence significantly
-                j = j + atan(resulty%val/maxeps)*j + 50
+                j = j + atan(resulty%val/maxeps)**2*j + 10
+                ! huge number
+                if (j>400000) then
+                    sumptr = sumptr - 1
+                    return
+                end if
                 result%val = input%initval
                 result%epsilon = 0
                 resulty%val = input%initerr
                 resulty%epsilon = 0
                 if (j>collapseInt(input%numb2)) j = collapseInt(input%numb2)
+                ssummaxstack(sumptr) = j
                 do i=collapseInt(input%numb1),j,1
                     sumstack(sumptr) = i
-                    ssummaxstack(sumptr) = j
                     lastcalcstack(sumptr) = result
                     lasterrorstack(sumptr) = resulty
                     resultx = eval(input%a,maxeps/(j+5))
                     result%val = result%val+resultx%val
                     result%epsilon = result%epsilon+resultx%epsilon+2**real(exponent(result%val)-112,real128)/2
-
                     resulty = eval(input%b,maxeps/(j+5))
                     resulty%val = abs(resulty%val)
                 end do
