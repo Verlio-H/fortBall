@@ -4,8 +4,8 @@ Converting to rationals is a future project\
 **THIS PROJECT CURRENTLY DOES NOT RUN IN GFORTRAN** (I love buggy fortran compilers)\
 It is known to work in ifort, all other fortran compilers are untested.\
 \
-Whats included: \
-- Types:\
+Whats included:
+- Types:
   - ball
     - A floating point value with an error bound, this is used for the result of computations and can also be used as inputs.
   - number
@@ -35,6 +35,12 @@ Whats included: \
     - eintsum(integer)
         - Constructs an expandedint with a summation index where the summation index refers to the upwards depth of sum that it is referring to
         - For example if there was a double nested sum and the expandedint was in the central expression, eintsum(0) would refer to the inside sum index and eintsum(1) would refer to the outside sum index
+    - eintsummax(integer)
+        - Works like eintsum but returns the maximum value for n in the current iteration of a slow sum
+    - lastcalc(integer)
+        - Returns a number representing the evaluation from the previous value of a sum (argument works like in eintsum)
+    - lasterr(integer)
+        - Returns a number representing the error calculated in the last iteration of a sum (argument works like in eintsum)
     - factorial(integer), factorial(expandedint)
         - Constructs a number representing the factorial of the argument
   - Manipulation:
@@ -47,4 +53,34 @@ Whats included: \
         - Attempts to make the error bound on the ball less than eps
         - Note that this function can result in infinite loops under some situations due to the usage of float128
   - Overloaded operations:
-    
+    - Addition:
+      - number+number
+      - number+integer
+      - integer+number
+      - expandedint+integer
+      - integer+expandedint
+    - Subtraction:
+      - number-number
+      - number-integer
+      - integer-number
+      - expandedint-integer
+      - integer-expandedint
+    - Multiplication:
+      - number*number
+      - number*integer
+      - integer*number
+      - expandedint*integer
+      - integer*expandedint
+    - Division:
+      - number/number
+      - integer/number
+      - number/integer
+    - Exponential:
+      - number**integer
+      - numebr**expandedint
+    - Write(formatted):
+      - ball
+      - number (prints tree)
+- Constants:
+    - infinity
+      - used as the upper bound for sums
