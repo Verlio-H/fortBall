@@ -1,7 +1,9 @@
 module series
     use iso_fortran_env
+    use ieee_arithmetic
     implicit none
 
+    private
 
     integer, parameter :: TYPE_INT = 0
     integer, parameter :: TYPE_BALL = 1
@@ -23,16 +25,16 @@ module series
     integer, parameter :: INT_INF = 3
 
 
-    type expandedint
+    type, public :: expandedint
         integer :: type
         integer :: val
         integer :: offset = 0
         integer :: multiplication = 1
     end type
 
-    type(expandedint), parameter :: infinity = expandedint(INT_INF,0)
+    type(expandedint), parameter, public :: infinity = expandedint(INT_INF,0)
 
-    type Number
+    type, public :: Number
         integer :: type
         type(Number), allocatable :: a
         type(Number), allocatable :: b
@@ -44,7 +46,7 @@ module series
         integer, allocatable :: diffs(:)
     end type
 
-    type Ball
+    type, public :: Ball
         real(real128) :: val
         real(real128) :: epsilon
     end type
@@ -56,40 +58,60 @@ module series
     type(Ball) :: lasterrorstack(MAX_SUM_DEPTH)
     integer :: sumptr = 0
 
+    public operator(+)
     interface operator(+)
         module procedure addition, addition_int_numb, addition_numb_int
         module procedure eintadd, eintaddrev
     end interface
 
+    public operator(-)
     interface operator(-)
         module procedure subtract, subtract_int_numb, subtract_numb_int
         module procedure eintsub, eintsubrev
     end interface
 
+    public operator(/)
     interface operator(/)
         module procedure divide, divide_int_numb, divide_numb_int
     end interface
 
+    public operator(*)
     interface operator(*)
         module procedure multiply, multiply_int_numb, multiply_numb_int
         module procedure eintmlt, eintmltrev
     end interface
 
+    public operator(**)
     interface operator(**)
         module procedure exponentiate, expanded_exponentiate
     end interface
 
+    public write(formatted)
     interface write(formatted)
         module procedure write, write_number
     end interface
 
+    public numb
     interface numb
         module procedure intval, eintval, numbball
     end interface
 
+    public factorial
     interface factorial
         module procedure factorial_int, factorial_eint
     end interface
+
+    public eval
+    public populate
+    public diff
+    public arg
+    public sum
+    public ssum
+    public eint
+    public eintsum
+    public eintsummax
+    public lastcalc
+    public lasterr
 contains
 
     pure elemental type(expandedint) function eintadd(a,b) result(c)
@@ -508,7 +530,7 @@ contains
                 if (input%numb1%val>=sumptr) error stop "sum depth not great enough"
                 result%val = ssummaxstack(sumptr-input%numb1%val)*input%numb1%multiplication+input%numb1%offset
             case (INT_INF)
-                result%val = 1./0. ! generate infinity, really should never be used but is here for completeness sake
+                result%val = ieee_value(result%val, ieee_positive_inf) ! generate infinity, really should never be used but is here for completeness sake
             end select
             !result%epsilon = 2**real(exponent(result%val)-112,real128)/2
             result%epsilon = 0
@@ -533,7 +555,7 @@ contains
                 result%val = ssummaxstack(sumptr-input%numb1%val)*input%numb1%multiplication+input%numb1%offset
                 result%val = gamma(result%val+1)
             case (INT_INF)
-                result%val = 1./0. ! generate infinity, really should never be used but is here for completeness sake
+                result%val = ieee_value(result%val, ieee_positive_inf) ! generate infinity, really should never be used but is here for completeness sake
             end select
             result%epsilon = 2**real(exponent(result%val)-112,real128)/2
         case (TYPE_ADD)
