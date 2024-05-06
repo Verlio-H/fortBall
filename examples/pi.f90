@@ -1,6 +1,7 @@
 ! example code to calculate pi
 
 program pi
+    use iso_fortran_env
     use series
     implicit none
     ! a ball is simply a floating point value with an error bound

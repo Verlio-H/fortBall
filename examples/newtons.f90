@@ -1,6 +1,7 @@
 !program to calculate the zeros of a function using newtons method
 !current configured to calculate the golden ratio
 program newtons
+    use iso_fortran_env
     use series
     implicit none
     real(real128) :: guess
