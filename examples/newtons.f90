@@ -14,7 +14,7 @@ program newtons
     n = eintsum(0)
 
     ! function goes here
-    f = x**4-x-1
+    f = x**2-x-1
     ! initial guess goes here
     guess = 1.3
 
@@ -24,7 +24,7 @@ program newtons
     err = populate(diff(diff(f,1),1),[lastcalc(0)])/populate(2*diff(f,1),[lastcalc(0)])*lasterr(0)**2
 
 
-    result = eval(sum(eint(0),infinity,an,err,minn=0,startval=guess,starterr=1._real128),10000.0_real128)
+    result = eval(sum(eint(0),infinity,an,err,minn=0,startval=guess,starterr=1._real128),0.005_real128)
 
     print*,result
     print'(A)','centered at:'
